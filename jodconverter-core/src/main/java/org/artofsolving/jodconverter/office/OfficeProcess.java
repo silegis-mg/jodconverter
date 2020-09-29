@@ -27,6 +27,8 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
@@ -64,7 +66,7 @@ class OfficeProcess {
 
     public static final String STARTUP_WATCH_TIMEOUT = "jod.startup.watch.timeout";
 
-    public static final int DEFAULT_STARTUP_WATCH_TIMEOUT = 7;
+    public static final int DEFAULT_STARTUP_WATCH_TIMEOUT = 30;
 
     public OfficeProcess(File officeHome, UnoUrl unoUrl, File templateProfileDir, ProcessManager processManager) {
         this(officeHome, unoUrl, templateProfileDir, processManager, false, true);
@@ -221,50 +223,46 @@ class OfficeProcess {
         if (PlatformUtils.isWindows()) {
             addBasisAndUrePaths(processBuilder);
         }
-        logger.info(String.format("starting process with acceptString '%s' and profileDir '%s'", unoUrl,
-                instanceProfileDir));
+        logger.info(String.format(
+                "starting process with acceptString '%s' and profileDir '%s'",
+                unoUrl, instanceProfileDir));
+        processBuilder.inheritIO();
         process = processBuilder.start();
 
         int exitValue = 0;
         boolean exited = false;
-        for (int i = 0; i < getStartupWatchTime() * 2; i++) {
-            try {
-                // wait for process to start
-                Thread.sleep(500);
-            } catch (Exception e) {
-            }
-            try {
-                exitValue = process.exitValue();
-                // process is already dead, no need to wait longer ...
+        try {
+            if (process.waitFor(getStartupWatchTime(), TimeUnit.SECONDS)) {
                 exited = true;
-                break;
-            } catch (IllegalThreadStateException e) {
-                // process is still up
+                exitValue = process.exitValue();
             }
+        } catch (InterruptedException ex) {
+            logger.log(Level.SEVERE, "Processo de inicialização do office interrompido", ex);
         }
 
         if (exited) {
             if (exitValue == 81) {
                 logger.warning("Restarting OOo after code 81 ...");
                 process = processBuilder.start();
+            } else {
+                logger.log(Level.WARNING, "Process exited with code {0}", exitValue);
+            }
+        } 
+
+        if (processManager.canFindPid()) {
+            pid = null;
+            for (int i = 0; pid == null && i < getStartupWatchTime() && process.isAlive(); i++) {
+                pid = processManager.findPid(processRegex);
                 try {
                     // wait for process to start
                     Thread.sleep(1000);
                 } catch (Exception e) {
                 }
-            } else {
-                logger.warning("Process exited with code " + exitValue);
             }
-        }
-
-        manageProcessOutputs(process);
-
-        if (processManager.canFindPid()) {
-            pid = processManager.findPid(processRegex);
             if (pid == null) {
                 throw new IllegalStateException("started process, but can not find the pid, process is probably dead");
             } else {
-                logger.info("started process : pid = " + pid);
+                logger.log(Level.INFO, "started process : pid = {0}", pid);
             }
         } else {
             logger.info("process started with PureJavaProcessManager - cannot check for pid");
