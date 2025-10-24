@@ -88,7 +88,7 @@ class OfficeProcess {
         this.killExistingProcess = killExistingProcess;
     }
 
-    protected void determineOfficeVersion() throws IOException {
+    protected  void determineOfficeVersion() throws IOException {
 
         File executable = OfficeUtils.getOfficeExecutable(officeHome);
         if (PlatformUtils.isWindows()) {
@@ -96,7 +96,7 @@ class OfficeProcess {
             return;
         }
 
-        List<String> command = new ArrayList<String>();
+        List<String> command = new ArrayList<>();
         command.add(executable.getAbsolutePath());
         command.add("-help");
         command.add("-headless");
@@ -108,36 +108,40 @@ class OfficeProcess {
         command.add("-env:UserInstallation=" + OfficeUtils.toUrl(instanceProfileDir));
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.redirectErrorStream(true);
-        if (PlatformUtils.isWindows()) {
-            addBasisAndUrePaths(processBuilder);
-        }
+
         Process checkProcess = processBuilder.start();
-        try {
-            checkProcess.waitFor();
-        } catch (InterruptedException e) {
-            // NOP
-        }
-        InputStream in = checkProcess.getInputStream();
-        String versionCheckOutput = read(in);
-        versionDescriptor = new OfficeVersionDescriptor(versionCheckOutput);
-    }
-
-    private String read(InputStream in) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        if (in.available() > 0) {
-            byte[] buffer = new byte[in.available()];
-            try {
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    sb.append(new String(buffer, 0, read));
+        // Lê a saída em thread separada
+        StringBuilder output = new StringBuilder();
+        Thread readerThread = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(checkProcess.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append(System.lineSeparator());
                 }
-            } finally {
-                in.close();
+            } catch (IOException e) {
+                // Ignora ou registra
             }
+        });
+        readerThread.start();
+
+        // Aguarda o processo por até 7 segundos
+        try {
+            if (!checkProcess.waitFor(7, TimeUnit.SECONDS)) {
+                checkProcess.destroyForcibly();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
-        return sb.toString();
+        // Aguarda a thread terminar a leitura
+        try {
+            readerThread.join(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        versionDescriptor = new OfficeVersionDescriptor(output.toString());
     }
 
+    
     public void start() throws IOException {
         if (versionDescriptor == null) {
             determineOfficeVersion();
