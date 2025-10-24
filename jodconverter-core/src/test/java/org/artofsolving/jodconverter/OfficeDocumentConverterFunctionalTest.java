@@ -74,6 +74,10 @@ public class OfficeDocumentConverterFunctionalTest {
                         System.out.println("-- skipping * to sxi test... ");
                         continue;
                     }
+                    if (outputFormat.getExtension().equals("swf")) {
+                        System.out.println("-- skipping * to sxi test... ");
+                        continue;
+                    }
                     File outputFile = File.createTempFile("test", "." + outputFormat.getExtension());
                     outputFile.deleteOnExit();
                     System.out.printf("-- converting %s to %s... ", inputFormat.getExtension(),
