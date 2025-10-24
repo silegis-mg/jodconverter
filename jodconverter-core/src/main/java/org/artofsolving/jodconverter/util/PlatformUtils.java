@@ -48,6 +48,7 @@ public class PlatformUtils {
             "/Applications/OpenOffice.org.app/Contents" };
 
     private static final String[] WINDOWS_OO_HOME_PATHS = {
+            System.getenv("ProgramFiles") + File.separator + "LibreOffice",
             System.getenv("ProgramFiles") + File.separator + "LibreOffice 5.5",
             System.getenv("ProgramFiles") + File.separator + "LibreOffice 5.4",
             System.getenv("ProgramFiles") + File.separator + "LibreOffice 5.3",
